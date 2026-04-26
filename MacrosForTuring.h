@@ -350,4 +350,38 @@ void GenerateAssign(TuringMachine &tm, const std::string &startState,
   GenerateAdd(tm, sClear, destName, srcName, nextState);
 }
 
+// ====================================================================================
+// --- Макрос: Деление и Остаток (Q = X / Y, R = X % Y) ---
+// ====================================================================================
+void GenerateDivMod(TuringMachine &tm, const std::string &startState,
+                    char xName, char yName, char qName, char rName,
+                    char zeroName, const std::string &nextState) {
+  std::string prefix = startState + "_divmod_";
+  std::string sClearQ = prefix + "clear_q";
+  std::string sAssignR = prefix + "assign_r";
+  std::string sLoop = prefix + "loop";
+  std::string sDoSub = prefix + "do_sub";
+  std::string sDoInc = prefix + "do_inc";
+
+  // 1. Защита от деления на 0 (если Y == 0, прыгаем в конец)
+  GenerateCompare(tm, startState, yName, zeroName, sClearQ, nextState,
+                  nextState);
+
+  // 2. Q = 0 (Обнуляем частное)
+  GenerateClear(tm, sClearQ, qName, sAssignR);
+
+  // 3. R = X (Копируем делимое в остаток)
+  GenerateAssign(tm, sAssignR, rName, xName, sLoop);
+
+  // 4. Цикл: Пока R >= Y
+  GenerateCompare(tm, sLoop, rName, yName, sDoSub, nextState,
+                  sDoSub); // Greater и Equal идут в sDoSub
+
+  // 5. Вычитаем (R = R - Y)
+  GenerateSubtract(tm, sDoSub, rName, yName, sDoInc);
+
+  // 6. Инкремент частного (Q++) и возврат в начало цикла
+  GenerateIncrement(tm, sDoInc, qName, sLoop);
+}
+
 #endif // MACROS_FOR_TURING
