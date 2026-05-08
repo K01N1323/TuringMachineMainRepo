@@ -13,7 +13,7 @@ $(TARGET): $(OBJS)
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-main.o: main.cpp MacrosForTuring.h TuringMachine.h MemoryManager.h Compiler.h
+main.o: main.cpp Compiler.h MacrosForTuring.h TuringMachine.h MemoryManager.h
 MemoryManager.o: MemoryManager.cpp MemoryManager.h TuringMachine.h
 
 clean:

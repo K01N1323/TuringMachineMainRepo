@@ -1,43 +1,45 @@
 #include "Compiler.h"
+
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
 
 int main() {
-  TuringMachine tm("start");
-  MemoryManager mem;
-  Compiler compiler(tm, mem);
+    TuringMachine tm("start");
+    MemoryManager mem;
+    Compiler      compiler(tm, mem);
 
-  std::string filename = "program.txt";
-  std::ifstream file(filename);
+    const std::string filename = "program.txt";
+    std::ifstream file(filename);
 
-  if (!file.is_open()) {
-    std::cerr << "[Ошибка] Не удалось открыть файл: " << filename << "\n";
-    return 1;
-  }
-
-  std::vector<std::string> sourceCode;
-  std::string line;
-  while (std::getline(file, line)) {
-    if (!line.empty()) {
-      sourceCode.push_back(line);
+    if (!file.is_open()) {
+        std::cerr << "[Error] Failed to open file: " << filename << "\n";
+        return 1;
     }
-  }
-  file.close();
 
-  std::cout << "[Compiler] Считывание кода завершено. Трансляция...\n";
-  compiler.Compile(sourceCode);
-  mem.Deploy(tm);
+    std::vector<std::string> sourceCode;
+    std::string line;
 
-  std::cout << "[Processor] Выполнение программы:\n";
-  std::cout << "------------------------------------\n";
+    while (std::getline(file, line)) {
+        if (!line.empty()) {
+            sourceCode.push_back(line);
+        }
+    }
 
-  // Запускаем исполнение через ОС компилятора, чтобы перехватывать print
-  compiler.Execute();
+    file.close();
 
-  std::cout << "------------------------------------\n";
-  std::cout << "[Processor] Программа успешно завершена.\n";
+    std::cout << "[Compiler] Source loaded. Compiling...\n";
+    compiler.Compile(sourceCode);
+    mem.Deploy(tm);
 
-  return 0;
+    std::cout << "[Processor] Executing program:\n";
+    std::cout << "------------------------------------\n";
+
+    compiler.Execute();
+
+    std::cout << "------------------------------------\n";
+    std::cout << "[Processor] Program finished.\n";
+
+    return 0;
 }

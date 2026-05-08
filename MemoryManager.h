@@ -2,41 +2,45 @@
 #define MEMORY_MANAGER_H
 
 #include "TuringMachine.h"
+
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-// Описание блока памяти на ленте
+// Описание блока памяти на ленте.
 struct Variable {
-  std::string name; // Имя в высокоуровневом коде (например, "counter")
-  char address; // Односимвольный физический адрес на ленте ('a', 'b', 'c'...)
-  int initialValue;       // Стартовое значение (количество единиц)
-  size_t padding = 10000; // Зарезервированное пустое пространство (отступ)
+    std::string  name;            // Имя переменной (например, "counter").
+    char         address;         // Однобуквенный адрес на ленте ('a'..'z').
+    int          initialValue;    // Начальное значение (количество единиц).
+    size_t       padding = 10000; // Зарезервированное пространство для роста.
 };
 
+// Менеджер памяти: маппинг имён переменных на физические адреса ленты.
 class MemoryManager {
-private:
-  std::vector<Variable> variables_;
-  std::unordered_map<std::string, char> symbolTable_;
-  char nextAddress_ = 'a'; // Доступное адресное пространство: 'a' - 'z'
-
-  // Стандартный запас прочности для роста переменных
-  static constexpr size_t DEFAULT_PADDING = 15;
-
 public:
-  // Регистрация переменной в памяти
-  void Allocate(const std::string &name, int initialValue = 0,
-                size_t padding = DEFAULT_PADDING);
+    // Регистрация переменной в памяти.
+    void Allocate(
+        const std::string & name,
+        int                 initialValue = 0,
+        size_t              padding      = kDefaultPadding
+    );
 
-  // Разрешение имени (получение физического адреса для макросов)
-  char GetAddress(const std::string &name) const;
+    // Получение физического адреса по имени.
+    char GetAddress(const std::string & name) const;
 
-  // Физическая "прошивка" памяти на ленту МТ
-  void Deploy(TuringMachine &tm) const;
+    // Запись переменных на ленту.
+    void Deploy(TuringMachine & tm) const;
 
-  // Декодирование унарного значения с ленты МТ в C++ int
-  int GetDecimalValue(const TuringMachine &tm, const std::string &name) const;
+    // Декодирование унарного значения с ленты в int.
+    int GetDecimalValue(const TuringMachine & tm, const std::string & name) const;
+
+private:
+    static constexpr size_t kDefaultPadding = 15;
+
+    std::vector<Variable>                    variables_;
+    std::unordered_map<std::string, char>    symbolTable_;
+    char                                     nextAddress_ = 'a';
 };
 
-#endif // MEMORY_MANAGER_H
+#endif  // MEMORY_MANAGER_H

@@ -1,14 +1,16 @@
-#ifndef MACROS_FOR_TURING
-#define MACROS_FOR_TURING
+#ifndef MACROS_FOR_TURING_H
+#define MACROS_FOR_TURING_H
 
 #include "TuringMachine.h"
+
 #include <string>
 
-// Единый алфавит. * - флаг для сложения, @ - флаг для
-// умножения/сравнения/вычитания ^ - МАРКЕР АБСОЛЮТНОГО НАЧАЛА ЛЕНТЫ (The Wall)
+// Рабочий алфавит ленты.
+// * — флаг сложения, @ — флаг умножения/сравнения/вычитания,
+// ^ — маркер начала ленты.
 const std::string ALPHABET = "01_:#abcdefghijklmnopqrstuvwxyz*@^";
 
-// Базовый макрос: Идет ВПРАВО, пропуская все символы, пока не встретит target
+// Движение вправо до символа `target`.
 void GenerateMoveRightUntil(TuringMachine &tm, const std::string &startState,
                             char target, const std::string &endState) {
   for (char s : ALPHABET) {
@@ -16,10 +18,11 @@ void GenerateMoveRightUntil(TuringMachine &tm, const std::string &startState,
       tm.AddRule(startState, s, startState, s, Direction::Right);
     }
   }
+
   tm.AddRule(startState, target, endState, target, Direction::Stay);
 }
 
-// Базовый макрос: Идет ВЛЕВО, пропуская все символы, пока не встретит target
+// Движение влево до символа `target`.
 void GenerateMoveLeftUntil(TuringMachine &tm, const std::string &startState,
                            char target, const std::string &endState) {
   for (char s : ALPHABET) {
@@ -27,10 +30,11 @@ void GenerateMoveLeftUntil(TuringMachine &tm, const std::string &startState,
       tm.AddRule(startState, s, startState, s, Direction::Left);
     }
   }
+
   tm.AddRule(startState, target, endState, target, Direction::Stay);
 }
 
-// Базовый макрос: Возвращает каретку в самое начало ленты (до левого края '^')
+// Возврат каретки к началу ленты (маркер ^)
 void GenerateReturnToStart(TuringMachine &tm, const std::string &state,
                            const std::string &nextState) {
   for (char s : ALPHABET) {
@@ -38,13 +42,11 @@ void GenerateReturnToStart(TuringMachine &tm, const std::string &state,
       tm.AddRule(state, s, state, s, Direction::Left);
     }
   }
-  // ФИКС ЗДЕСЬ: меняем Direction::Right на Direction::Stay
+
   tm.AddRule(state, '^', nextState, '^', Direction::Stay);
 }
 
-// ====================================================================================
-// --- Макрос: Инкремент (var++) ---
-// ====================================================================================
+// Инкремент: var++.
 void GenerateIncrement(TuringMachine &tm, const std::string &startState,
                        char varName, const std::string &nextState) {
   std::string prefix = startState + "_inc_";
@@ -65,15 +67,11 @@ void GenerateIncrement(TuringMachine &tm, const std::string &startState,
   GenerateReturnToStart(tm, s3, nextState);
 }
 
-// ====================================================================================
-// --- Макрос: Сравнение (X ? Y) (С АБСОЛЮТНОЙ АДРЕСАЦИЕЙ И УНИКАЛЬНЫМИ ИМЕНАМИ)
-// ---
-// ====================================================================================
+// Сравнение: X ? Y → ветвление на Greater / Less / Equal.
 void GenerateCompare(TuringMachine &tm, const std::string &startState,
                      char xName, char yName, const std::string &stateGreater,
                      const std::string &stateLess,
                      const std::string &stateEqual) {
-
   std::string prefix = startState + "_cmp_";
   std::string sStartLoop = prefix + "start_loop";
   std::string sFindX = prefix + "find_x";
@@ -83,8 +81,9 @@ void GenerateCompare(TuringMachine &tm, const std::string &startState,
 
   GenerateReturnToStart(tm, startState, sStartLoop);
 
-  // Ищем X
+  // Поиск X и маркировка единицы.
   GenerateMoveRightUntil(tm, sStartLoop, xName, sFindX);
+
   tm.AddRule(sFindX, xName, sFindX, xName, Direction::Right);
   tm.AddRule(sFindX, ':', sFindX, ':', Direction::Right);
   tm.AddRule(sFindX, '@', sFindX, '@', Direction::Right);
@@ -92,27 +91,30 @@ void GenerateCompare(TuringMachine &tm, const std::string &startState,
   tm.AddRule(sFindX, '1', sGoY, '@', Direction::Stay);
   tm.AddRule(sFindX, '#', sCheckYEmpty, '#', Direction::Stay);
 
-  // Идем к Y из абсолютного начала
+  // Переход к Y
   std::string sFindYStart = prefix + "find_y_start";
   GenerateReturnToStart(tm, sGoY, sFindYStart);
 
   GenerateMoveRightUntil(tm, sFindYStart, yName, sCheckY);
+
   tm.AddRule(sCheckY, yName, sCheckY, yName, Direction::Right);
   tm.AddRule(sCheckY, ':', sCheckY, ':', Direction::Right);
   tm.AddRule(sCheckY, '@', sCheckY, '@', Direction::Right);
 
   std::string sLoopBack = prefix + "loop_back";
+
   tm.AddRule(sCheckY, '1', sLoopBack, '@', Direction::Stay);
   GenerateReturnToStart(tm, sLoopBack, sStartLoop);
 
   tm.AddRule(sCheckY, '#', prefix + "cleanup_G", '#', Direction::Stay);
 
-  // Проверка Y (когда X пуст)
+  // Проверка Y, когда X исчерпан.
   std::string sYFindStart = sCheckYEmpty + "_find_start";
   GenerateReturnToStart(tm, sCheckYEmpty, sYFindStart);
 
   std::string sYFind = sCheckYEmpty + "_find";
   GenerateMoveRightUntil(tm, sYFindStart, yName, sYFind);
+
   tm.AddRule(sYFind, yName, sYFind, yName, Direction::Right);
   tm.AddRule(sYFind, ':', sYFind, ':', Direction::Right);
   tm.AddRule(sYFind, '@', sYFind, '@', Direction::Right);
@@ -120,28 +122,40 @@ void GenerateCompare(TuringMachine &tm, const std::string &startState,
   tm.AddRule(sYFind, '1', prefix + "cleanup_L", '1', Direction::Stay);
   tm.AddRule(sYFind, '#', prefix + "cleanup_E", '#', Direction::Stay);
 
-  // Очистка обоих регистров от '@'
-  for (std::string res : {"_G", "_L", "_E"}) {
-    std::string st = prefix + "cleanup" + res;
-    std::string finalState =
-        (res == "_G" ? stateGreater : (res == "_L" ? stateLess : stateEqual));
+  // Восстановление '@' → '1' в обоих регистрах.
+  for (const std::string &res : {"_G", "_L", "_E"}) {
 
-    // Чистим X
+    std::string st = prefix + "cleanup" + res;
+    std::string finalState;
+
+    if (res == "_G") {
+      finalState = stateGreater;
+    } else if (res == "_L") {
+      finalState = stateLess;
+    } else {
+      finalState = stateEqual;
+    }
+
+    // Очистка X.
     std::string cx = st + "_cx";
-    GenerateReturnToStart(tm, st, cx);
     std::string cxFind = cx + "_find";
+
+    GenerateReturnToStart(tm, st, cx);
     GenerateMoveRightUntil(tm, cx, xName, cxFind);
+
     tm.AddRule(cxFind, xName, cxFind, xName, Direction::Right);
     tm.AddRule(cxFind, ':', cxFind, ':', Direction::Right);
     tm.AddRule(cxFind, '1', cxFind, '1', Direction::Right);
     tm.AddRule(cxFind, '@', cxFind, '1', Direction::Right);
     tm.AddRule(cxFind, '#', st + "_cy", '#', Direction::Stay);
 
-    // Чистим Y
+    // Очистка Y.
     std::string cy = st + "_cy_start";
-    GenerateReturnToStart(tm, st + "_cy", cy);
     std::string cyFind = cy + "_find";
+
+    GenerateReturnToStart(tm, st + "_cy", cy);
     GenerateMoveRightUntil(tm, cy, yName, cyFind);
+
     tm.AddRule(cyFind, yName, cyFind, yName, Direction::Right);
     tm.AddRule(cyFind, ':', cyFind, ':', Direction::Right);
     tm.AddRule(cyFind, '1', cyFind, '1', Direction::Right);
@@ -152,9 +166,7 @@ void GenerateCompare(TuringMachine &tm, const std::string &startState,
   }
 }
 
-// ====================================================================================
-// --- Макрос: Обнуление (X = 0) ---
-// ====================================================================================
+// Обнуление: X = 0.
 void GenerateClear(TuringMachine &tm, const std::string &startState, char xName,
                    const std::string &nextState) {
   std::string prefix = startState + "_clr_";
@@ -175,12 +187,11 @@ void GenerateClear(TuringMachine &tm, const std::string &startState, char xName,
   tm.AddRule(sBack, ':', sWrite, ':', Direction::Right);
 
   tm.AddRule(sWrite, '_', prefix + "return", '#', Direction::Stay);
+
   GenerateReturnToStart(tm, prefix + "return", nextState);
 }
 
-// ====================================================================================
-// --- Макрос: Безопасное Сложение (X = X + Y) ---
-// ====================================================================================
+// Сложение: X = X + Y
 void GenerateAdd(TuringMachine &tm, const std::string &startState, char xName,
                  char yName, const std::string &nextState) {
   std::string prefix = startState + "_add_";
@@ -194,7 +205,9 @@ void GenerateAdd(TuringMachine &tm, const std::string &startState, char xName,
 
   GenerateReturnToStart(tm, startState, sStartLoop);
 
+  // Поиск очередной единицы Y и замена на маркер '*'.
   GenerateMoveRightUntil(tm, sStartLoop, yName, sCheckY);
+
   tm.AddRule(sCheckY, yName, sCheckY, yName, Direction::Right);
   tm.AddRule(sCheckY, ':', sCheckY, ':', Direction::Right);
   tm.AddRule(sCheckY, '*', sCheckY, '*', Direction::Right);
@@ -202,9 +215,10 @@ void GenerateAdd(TuringMachine &tm, const std::string &startState, char xName,
   tm.AddRule(sCheckY, '1', sGoStartX, '*', Direction::Stay);
   tm.AddRule(sCheckY, '#', sRestore, '#', Direction::Stay);
 
+  // Дописывание единицы в X.
   GenerateReturnToStart(tm, sGoStartX, sFindX);
-
   GenerateMoveRightUntil(tm, sFindX, xName, sWriteX);
+
   tm.AddRule(sWriteX, xName, sWriteX, xName, Direction::Right);
   tm.AddRule(sWriteX, ':', sWriteX, ':', Direction::Right);
   tm.AddRule(sWriteX, '1', sWriteX, '1', Direction::Right);
@@ -216,6 +230,7 @@ void GenerateAdd(TuringMachine &tm, const std::string &startState, char xName,
 
   GenerateReturnToStart(tm, prefix + "loop_back", sStartLoop);
 
+  // Восстановление '*' → '1' в Y.
   GenerateReturnToStart(tm, sRestore, prefix + "clean_y");
   GenerateMoveRightUntil(tm, prefix + "clean_y", yName, prefix + "cleaning");
 
@@ -232,9 +247,7 @@ void GenerateAdd(TuringMachine &tm, const std::string &startState, char xName,
   GenerateReturnToStart(tm, prefix + "finish", nextState);
 }
 
-// ====================================================================================
-// --- Макрос: Декремент (X--) ---
-// ====================================================================================
+// Декремент: X--.
 void GenerateDecrement(TuringMachine &tm, const std::string &startState,
                        char xName, const std::string &nextState) {
   std::string prefix = startState + "_dec_";
@@ -244,6 +257,7 @@ void GenerateDecrement(TuringMachine &tm, const std::string &startState,
   std::string sErase = prefix + "erase";
 
   GenerateMoveRightUntil(tm, startState, xName, sFind);
+
   tm.AddRule(sFind, xName, sFind, xName, Direction::Right);
   tm.AddRule(sFind, ':', sScan, ':', Direction::Right);
 
@@ -254,36 +268,35 @@ void GenerateDecrement(TuringMachine &tm, const std::string &startState,
   tm.AddRule(sErase, '#', prefix + "return", '_', Direction::Stay);
 
   tm.AddRule(sCheck, ':', prefix + "return", ':', Direction::Stay);
+
   GenerateReturnToStart(tm, prefix + "return", nextState);
 }
 
-// ====================================================================================
-// --- Макрос: Усеченное Вычитание (X = max(0, X - Y)) ---
-// ====================================================================================
+// Усечённое вычитание: X = max(0, X - Y).
 void GenerateSubtract(TuringMachine &tm, const std::string &startState,
                       char xName, char yName, const std::string &nextState) {
   std::string prefix = startState + "_sub_";
-  std::string sFindY = prefix + "find_y";
   std::string sCheckY = prefix + "check_y";
-  std::string sGoStartX = prefix + "go_start_x";
+  std::string sGoStart = prefix + "go_start_x";
   std::string sRestore = prefix + "restore";
 
   GenerateMoveRightUntil(tm, startState, yName, sCheckY);
+
   tm.AddRule(sCheckY, yName, sCheckY, yName, Direction::Right);
   tm.AddRule(sCheckY, ':', sCheckY, ':', Direction::Right);
   tm.AddRule(sCheckY, '@', sCheckY, '@', Direction::Right);
 
-  tm.AddRule(sCheckY, '1', sGoStartX, '@', Direction::Stay);
+  tm.AddRule(sCheckY, '1', sGoStart, '@', Direction::Stay);
   tm.AddRule(sCheckY, '#', sRestore, '#', Direction::Stay);
 
   std::string sDecX = prefix + "do_dec_x";
-  GenerateReturnToStart(tm, sGoStartX, sDecX);
-
   std::string sLoopBack = prefix + "loop_back";
-  GenerateDecrement(tm, sDecX, xName, sLoopBack);
 
+  GenerateReturnToStart(tm, sGoStart, sDecX);
+  GenerateDecrement(tm, sDecX, xName, sLoopBack);
   GenerateReturnToStart(tm, sLoopBack, startState);
 
+  // Восстановление '@' → '1' в Y.
   GenerateReturnToStart(tm, sRestore, prefix + "clean_y");
   GenerateMoveRightUntil(tm, prefix + "clean_y", yName, prefix + "cleaning");
 
@@ -297,12 +310,11 @@ void GenerateSubtract(TuringMachine &tm, const std::string &startState,
              Direction::Right);
 
   tm.AddRule(prefix + "cleaning", '#', prefix + "finish", '#', Direction::Stay);
+
   GenerateReturnToStart(tm, prefix + "finish", nextState);
 }
 
-// ====================================================================================
-// --- Макрос: Умножение с накоплением (X = X + Y * Z) ---
-// ====================================================================================
+// Умножение с накоплением: X = X + Y * Z.
 void GenerateMultiply(TuringMachine &tm, const std::string &startState,
                       char xName, char yName, char zName,
                       const std::string &nextState) {
@@ -324,6 +336,7 @@ void GenerateMultiply(TuringMachine &tm, const std::string &startState,
 
   GenerateAdd(tm, sDoAdd, xName, yName, sLoopZ);
 
+  // Восстановление '@' → '1' в Z.
   GenerateReturnToStart(tm, sRestoreZ, prefix + "clean_z");
   GenerateMoveRightUntil(tm, prefix + "clean_z", zName, prefix + "cleaning");
 
@@ -340,19 +353,16 @@ void GenerateMultiply(TuringMachine &tm, const std::string &startState,
   GenerateReturnToStart(tm, prefix + "finish", nextState);
 }
 
-// ====================================================================================
-// --- Макрос: Присваивание / Копирование (Dest = Src) ---
-// ====================================================================================
+// Присваивание: Dest = Src (очистка + копирование).
 void GenerateAssign(TuringMachine &tm, const std::string &startState,
                     char destName, char srcName, const std::string &nextState) {
   std::string sClear = startState + "_assign_clear";
+
   GenerateClear(tm, startState, destName, sClear);
   GenerateAdd(tm, sClear, destName, srcName, nextState);
 }
 
-// ====================================================================================
-// --- Макрос: Деление и Остаток (Q = X / Y, R = X % Y) ---
-// ====================================================================================
+// Деление с остатком: Q = X / Y, R = X % Y.
 void GenerateDivMod(TuringMachine &tm, const std::string &startState,
                     char xName, char yName, char qName, char rName,
                     char zeroName, const std::string &nextState) {
@@ -363,25 +373,24 @@ void GenerateDivMod(TuringMachine &tm, const std::string &startState,
   std::string sDoSub = prefix + "do_sub";
   std::string sDoInc = prefix + "do_inc";
 
-  // 1. Защита от деления на 0 (если Y == 0, прыгаем в конец)
+  // Защита от деления на ноль.
   GenerateCompare(tm, startState, yName, zeroName, sClearQ, nextState,
                   nextState);
 
-  // 2. Q = 0 (Обнуляем частное)
+  // Q = 0.
   GenerateClear(tm, sClearQ, qName, sAssignR);
 
-  // 3. R = X (Копируем делимое в остаток)
+  // R = X.
   GenerateAssign(tm, sAssignR, rName, xName, sLoop);
 
-  // 4. Цикл: Пока R >= Y
-  GenerateCompare(tm, sLoop, rName, yName, sDoSub, nextState,
-                  sDoSub); // Greater и Equal идут в sDoSub
+  // Цикл: пока R >= Y.
+  GenerateCompare(tm, sLoop, rName, yName, sDoSub, nextState, sDoSub);
 
-  // 5. Вычитаем (R = R - Y)
+  // R = R - Y.
   GenerateSubtract(tm, sDoSub, rName, yName, sDoInc);
 
-  // 6. Инкремент частного (Q++) и возврат в начало цикла
+  // Q++.
   GenerateIncrement(tm, sDoInc, qName, sLoop);
 }
 
-#endif // MACROS_FOR_TURING
+#endif // MACROS_FOR_TURING_H
