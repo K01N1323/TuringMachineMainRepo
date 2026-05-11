@@ -1,4 +1,3 @@
-int a = 3
-int b = 6
-int rez = a*b
-print rez
+var x = 1
+var y = 2
+

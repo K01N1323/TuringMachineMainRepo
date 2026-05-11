@@ -2,395 +2,265 @@
 #define MACROS_FOR_TURING_H
 
 #include "TuringMachine.h"
-
 #include <string>
 
-// Рабочий алфавит ленты.
-// * — флаг сложения, @ — флаг умножения/сравнения/вычитания,
-// ^ — маркер начала ленты.
-const std::string ALPHABET = "01_:#abcdefghijklmnopqrstuvwxyz*@^";
-
-// Движение вправо до символа `target`.
-void GenerateMoveRightUntil(TuringMachine &tm, const std::string &startState,
-                            char target, const std::string &endState) {
-  for (char s : ALPHABET) {
-    if (s != target) {
-      tm.AddRule(startState, s, startState, s, Direction::Right);
-    }
-  }
-
-  tm.AddRule(startState, target, endState, target, Direction::Stay);
+// Вспомогательные функции для генерации состояний
+inline void MoveHead(TuringMachine& tm, const std::string& state, const std::string& nextState,
+                     Direction d0, Direction d1, Direction d2) {
+    tm.AddRule(state, '?', '?', '?', nextState, '?', '?', '?', d0, d1, d2);
 }
 
-// Движение влево до символа `target`.
-void GenerateMoveLeftUntil(TuringMachine &tm, const std::string &startState,
-                           char target, const std::string &endState) {
-  for (char s : ALPHABET) {
-    if (s != target) {
-      tm.AddRule(startState, s, startState, s, Direction::Left);
-    }
-  }
-
-  tm.AddRule(startState, target, endState, target, Direction::Stay);
-}
-
-// Возврат каретки к началу ленты (маркер ^)
-void GenerateReturnToStart(TuringMachine &tm, const std::string &state,
-                           const std::string &nextState) {
-  for (char s : ALPHABET) {
-    if (s != '^') {
-      tm.AddRule(state, s, state, s, Direction::Left);
-    }
-  }
-
-  tm.AddRule(state, '^', nextState, '^', Direction::Stay);
-}
-
-// Инкремент: var++.
-void GenerateIncrement(TuringMachine &tm, const std::string &startState,
-                       char varName, const std::string &nextState) {
-  std::string prefix = startState + "_inc_";
-  std::string s1 = prefix + "seek";
-  std::string s2 = prefix + "write";
-  std::string s3 = prefix + "return";
-
-  GenerateMoveRightUntil(tm, startState, varName, s1);
-
-  tm.AddRule(s1, varName, s1, varName, Direction::Right);
-  tm.AddRule(s1, ':', s1, ':', Direction::Right);
-  tm.AddRule(s1, '1', s1, '1', Direction::Right);
-  tm.AddRule(s1, '#', s2, '1', Direction::Right);
-
-  tm.AddRule(s2, '_', s3, '#', Direction::Stay);
-  tm.AddRule(s2, '#', s3, '#', Direction::Stay);
-
-  GenerateReturnToStart(tm, s3, nextState);
-}
-
-// Сравнение: X ? Y → ветвление на Greater / Less / Equal.
-void GenerateCompare(TuringMachine &tm, const std::string &startState,
-                     char xName, char yName, const std::string &stateGreater,
-                     const std::string &stateLess,
-                     const std::string &stateEqual) {
-  std::string prefix = startState + "_cmp_";
-  std::string sStartLoop = prefix + "start_loop";
-  std::string sFindX = prefix + "find_x";
-  std::string sGoY = prefix + "go_y";
-  std::string sCheckY = prefix + "check_y";
-  std::string sCheckYEmpty = prefix + "check_y_empty";
-
-  GenerateReturnToStart(tm, startState, sStartLoop);
-
-  // Поиск X и маркировка единицы.
-  GenerateMoveRightUntil(tm, sStartLoop, xName, sFindX);
-
-  tm.AddRule(sFindX, xName, sFindX, xName, Direction::Right);
-  tm.AddRule(sFindX, ':', sFindX, ':', Direction::Right);
-  tm.AddRule(sFindX, '@', sFindX, '@', Direction::Right);
-
-  tm.AddRule(sFindX, '1', sGoY, '@', Direction::Stay);
-  tm.AddRule(sFindX, '#', sCheckYEmpty, '#', Direction::Stay);
-
-  // Переход к Y
-  std::string sFindYStart = prefix + "find_y_start";
-  GenerateReturnToStart(tm, sGoY, sFindYStart);
-
-  GenerateMoveRightUntil(tm, sFindYStart, yName, sCheckY);
-
-  tm.AddRule(sCheckY, yName, sCheckY, yName, Direction::Right);
-  tm.AddRule(sCheckY, ':', sCheckY, ':', Direction::Right);
-  tm.AddRule(sCheckY, '@', sCheckY, '@', Direction::Right);
-
-  std::string sLoopBack = prefix + "loop_back";
-
-  tm.AddRule(sCheckY, '1', sLoopBack, '@', Direction::Stay);
-  GenerateReturnToStart(tm, sLoopBack, sStartLoop);
-
-  tm.AddRule(sCheckY, '#', prefix + "cleanup_G", '#', Direction::Stay);
-
-  // Проверка Y, когда X исчерпан.
-  std::string sYFindStart = sCheckYEmpty + "_find_start";
-  GenerateReturnToStart(tm, sCheckYEmpty, sYFindStart);
-
-  std::string sYFind = sCheckYEmpty + "_find";
-  GenerateMoveRightUntil(tm, sYFindStart, yName, sYFind);
-
-  tm.AddRule(sYFind, yName, sYFind, yName, Direction::Right);
-  tm.AddRule(sYFind, ':', sYFind, ':', Direction::Right);
-  tm.AddRule(sYFind, '@', sYFind, '@', Direction::Right);
-
-  tm.AddRule(sYFind, '1', prefix + "cleanup_L", '1', Direction::Stay);
-  tm.AddRule(sYFind, '#', prefix + "cleanup_E", '#', Direction::Stay);
-
-  // Восстановление '@' → '1' в обоих регистрах.
-  for (const std::string &res : {"_G", "_L", "_E"}) {
-
-    std::string st = prefix + "cleanup" + res;
-    std::string finalState;
-
-    if (res == "_G") {
-      finalState = stateGreater;
-    } else if (res == "_L") {
-      finalState = stateLess;
+// Позиционирование каретки на ленте 0 (память)
+inline void GenerateMoveTape0To(TuringMachine& tm, const std::string& startState, int currentPos, int targetPos, const std::string& nextState) {
+    std::string curr = startState;
+    if (currentPos < targetPos) {
+        for (int i = currentPos; i < targetPos; ++i) {
+            std::string nxt = (i == targetPos - 1) ? nextState : curr + "_R";
+            MoveHead(tm, curr, nxt, Direction::Right, Direction::Stay, Direction::Stay);
+            curr = nxt;
+        }
+    } else if (currentPos > targetPos) {
+        for (int i = currentPos; i > targetPos; --i) {
+            std::string nxt = (i == targetPos + 1) ? nextState : curr + "_L";
+            MoveHead(tm, curr, nxt, Direction::Left, Direction::Stay, Direction::Stay);
+            curr = nxt;
+        }
     } else {
-      finalState = stateEqual;
+        MoveHead(tm, curr, nextState, Direction::Stay, Direction::Stay, Direction::Stay);
+    }
+}
+
+// Перемотка лент АЛУ к началу (до маркера '^')
+inline void GenerateRewindTape(TuringMachine& tm, const std::string& startState, int tapeIndex, const std::string& nextState) {
+    std::string loopState = startState + "_rw";
+    MoveHead(tm, startState, loopState, Direction::Stay, Direction::Stay, Direction::Stay);
+
+    Direction d0 = (tapeIndex == 0) ? Direction::Left : Direction::Stay;
+    Direction d1 = (tapeIndex == 1) ? Direction::Left : Direction::Stay;
+    Direction d2 = (tapeIndex == 2) ? Direction::Left : Direction::Stay;
+
+    if (tapeIndex == 1) {
+        tm.AddRule(loopState, '?', '0', '?', loopState, '?', '?', '?', d0, d1, d2);
+        tm.AddRule(loopState, '?', '1', '?', loopState, '?', '?', '?', d0, d1, d2);
+        tm.AddRule(loopState, '?', '_', '?', loopState, '?', '?', '?', d0, d1, d2);
+        tm.AddRule(loopState, '?', '^', '?', nextState, '?', '?', '?', Direction::Stay, Direction::Stay, Direction::Stay);
+    } else if (tapeIndex == 2) {
+        tm.AddRule(loopState, '?', '?', '0', loopState, '?', '?', '?', d0, d1, d2);
+        tm.AddRule(loopState, '?', '?', '1', loopState, '?', '?', '?', d0, d1, d2);
+        tm.AddRule(loopState, '?', '?', '_', loopState, '?', '?', '?', d0, d1, d2);
+        tm.AddRule(loopState, '?', '?', '^', nextState, '?', '?', '?', Direction::Stay, Direction::Stay, Direction::Stay);
+    }
+}
+
+// Очистка ленты 1 и 2 и установка маркера
+inline void GenerateInitALU(TuringMachine& tm, const std::string& startState, const std::string& nextState) {
+    tm.AddRule(startState, '?', '?', '?', nextState, '?', '^', '^', Direction::Stay, Direction::Right, Direction::Right);
+}
+
+// Копирование из памяти в регистр (Tape 1 или Tape 2)
+// Конвертирует '+' -> '0', '-' -> '1'. Голова Tape0 должна стоять на знаке!
+inline void GenerateLoadToALU(TuringMachine& tm, const std::string& startState, int targetTape, const std::string& nextState) {
+    std::string readSign = startState + "_sign";
+    std::string readBits = startState + "_bits";
+
+    MoveHead(tm, startState, readSign, Direction::Stay, Direction::Stay, Direction::Stay);
+
+    if (targetTape == 1) {
+        tm.AddRule(readSign, '+', '?', '?', readBits, '?', '0', '?', Direction::Right, Direction::Right, Direction::Stay);
+        tm.AddRule(readSign, '-', '?', '?', readBits, '?', '1', '?', Direction::Right, Direction::Right, Direction::Stay);
+    } else {
+        tm.AddRule(readSign, '+', '?', '?', readBits, '?', '?', '0', Direction::Right, Direction::Stay, Direction::Right);
+        tm.AddRule(readSign, '-', '?', '?', readBits, '?', '?', '1', Direction::Right, Direction::Stay, Direction::Right);
     }
 
-    // Очистка X.
-    std::string cx = st + "_cx";
-    std::string cxFind = cx + "_find";
-
-    GenerateReturnToStart(tm, st, cx);
-    GenerateMoveRightUntil(tm, cx, xName, cxFind);
-
-    tm.AddRule(cxFind, xName, cxFind, xName, Direction::Right);
-    tm.AddRule(cxFind, ':', cxFind, ':', Direction::Right);
-    tm.AddRule(cxFind, '1', cxFind, '1', Direction::Right);
-    tm.AddRule(cxFind, '@', cxFind, '1', Direction::Right);
-    tm.AddRule(cxFind, '#', st + "_cy", '#', Direction::Stay);
-
-    // Очистка Y.
-    std::string cy = st + "_cy_start";
-    std::string cyFind = cy + "_find";
-
-    GenerateReturnToStart(tm, st + "_cy", cy);
-    GenerateMoveRightUntil(tm, cy, yName, cyFind);
-
-    tm.AddRule(cyFind, yName, cyFind, yName, Direction::Right);
-    tm.AddRule(cyFind, ':', cyFind, ':', Direction::Right);
-    tm.AddRule(cyFind, '1', cyFind, '1', Direction::Right);
-    tm.AddRule(cyFind, '@', cyFind, '1', Direction::Right);
-    tm.AddRule(cyFind, '#', st + "_finish", '#', Direction::Stay);
-
-    GenerateReturnToStart(tm, st + "_finish", finalState);
-  }
+    std::string curr = readBits;
+    for (int i = 0; i < 32; ++i) {
+        std::string nxt = (i == 31) ? nextState : readBits + "_" + std::to_string(i);
+        if (targetTape == 1) {
+            tm.AddRule(curr, '0', '?', '?', nxt, '?', '0', '?', Direction::Right, Direction::Right, Direction::Stay);
+            tm.AddRule(curr, '1', '?', '?', nxt, '?', '1', '?', Direction::Right, Direction::Right, Direction::Stay);
+        } else {
+            tm.AddRule(curr, '0', '?', '?', nxt, '?', '?', '0', Direction::Right, Direction::Stay, Direction::Right);
+            tm.AddRule(curr, '1', '?', '?', nxt, '?', '?', '1', Direction::Right, Direction::Stay, Direction::Right);
+        }
+        curr = nxt;
+    }
 }
 
-// Обнуление: X = 0.
-void GenerateClear(TuringMachine &tm, const std::string &startState, char xName,
-                   const std::string &nextState) {
-  std::string prefix = startState + "_clr_";
-  std::string sFind = prefix + "find";
-  std::string sErase = prefix + "erase";
-  std::string sBack = prefix + "back";
-  std::string sWrite = prefix + "write";
+// Сохранение из регистра (Tape 2) в память
+inline void GenerateStoreFromALU(TuringMachine& tm, const std::string& startState, const std::string& nextState) {
+    std::string rewind = startState + "_rw";
+    std::string moveRight = startState + "_mr";
+    std::string readSign = startState + "_sign";
+    std::string readBits = startState + "_bits";
 
-  GenerateMoveRightUntil(tm, startState, xName, sFind);
+    // Возвращаем Tape 2 к началу
+    GenerateRewindTape(tm, startState, 2, moveRight);
+    
+    // Сдвигаем вправо на 1 позицию, чтобы встать на знак
+    MoveHead(tm, moveRight, readSign, Direction::Stay, Direction::Stay, Direction::Right);
 
-  tm.AddRule(sFind, xName, sFind, xName, Direction::Right);
-  tm.AddRule(sFind, ':', sErase, ':', Direction::Right);
+    MoveHead(tm, readSign, readSign + "_wait", Direction::Stay, Direction::Stay, Direction::Stay);
 
-  tm.AddRule(sErase, '1', sErase, '_', Direction::Right);
-  tm.AddRule(sErase, '#', sBack, '_', Direction::Left);
+    tm.AddRule(readSign + "_wait", '?', '?', '0', readBits, '+', '?', '?', Direction::Right, Direction::Stay, Direction::Right);
+    tm.AddRule(readSign + "_wait", '?', '?', '1', readBits, '-', '?', '?', Direction::Right, Direction::Stay, Direction::Right);
 
-  tm.AddRule(sBack, '_', sBack, '_', Direction::Left);
-  tm.AddRule(sBack, ':', sWrite, ':', Direction::Right);
-
-  tm.AddRule(sWrite, '_', prefix + "return", '#', Direction::Stay);
-
-  GenerateReturnToStart(tm, prefix + "return", nextState);
+    std::string curr = readBits;
+    for (int i = 0; i < 32; ++i) {
+        std::string nxt = (i == 31) ? nextState : readBits + "_" + std::to_string(i);
+        tm.AddRule(curr, '?', '?', '0', nxt, '0', '?', '?', Direction::Right, Direction::Stay, Direction::Right);
+        tm.AddRule(curr, '?', '?', '1', nxt, '1', '?', '?', Direction::Right, Direction::Stay, Direction::Right);
+        curr = nxt;
+    }
 }
 
-// Сложение: X = X + Y
-void GenerateAdd(TuringMachine &tm, const std::string &startState, char xName,
-                 char yName, const std::string &nextState) {
-  std::string prefix = startState + "_add_";
-  std::string sStartLoop = prefix + "start_loop";
-  std::string sCheckY = prefix + "check_y";
-  std::string sGoStartX = prefix + "go_start_x";
-  std::string sFindX = prefix + "find_x";
-  std::string sWriteX = prefix + "write_x";
-  std::string sGoNext = prefix + "go_next";
-  std::string sRestore = prefix + "restore";
+// Прямой код -> Дополнительный код (Two's Complement)
+inline void GenerateToTwosComplement(TuringMachine& tm, const std::string& startState, int tapeIndex, const std::string& nextState) {
+    std::string checkSign = startState + "_check";
+    GenerateRewindTape(tm, startState, tapeIndex, checkSign);
+    
+    std::string goEnd = startState + "_goEnd";
+    std::string invertAdd1 = startState + "_invAdd1_0";
+    std::string finish = startState + "_fin";
 
-  GenerateReturnToStart(tm, startState, sStartLoop);
+    Direction d1 = (tapeIndex == 1) ? Direction::Right : Direction::Stay;
+    Direction d2 = (tapeIndex == 2) ? Direction::Right : Direction::Stay;
+    MoveHead(tm, checkSign, checkSign + "_2", Direction::Stay, d1, d2);
 
-  // Поиск очередной единицы Y и замена на маркер '*'.
-  GenerateMoveRightUntil(tm, sStartLoop, yName, sCheckY);
+    if (tapeIndex == 1) {
+        tm.AddRule(checkSign + "_2", '?', '0', '?', finish, '?', '?', '?', Direction::Stay, Direction::Right, Direction::Stay);
+        tm.AddRule(checkSign + "_2", '?', '1', '?', goEnd, '?', '?', '?', Direction::Stay, Direction::Right, Direction::Stay);
+    } else {
+        tm.AddRule(checkSign + "_2", '?', '?', '0', finish, '?', '?', '?', Direction::Stay, Direction::Stay, Direction::Right);
+        tm.AddRule(checkSign + "_2", '?', '?', '1', goEnd, '?', '?', '?', Direction::Stay, Direction::Stay, Direction::Right);
+    }
+    
+    std::string currFin = finish;
+    for (int i = 0; i < 32; ++i) {
+        std::string nxt = finish + "_" + std::to_string(i);
+        MoveHead(tm, currFin, nxt, Direction::Stay, d1, d2);
+        currFin = nxt;
+    }
+    MoveHead(tm, currFin, nextState, Direction::Stay, Direction::Stay, Direction::Stay);
 
-  tm.AddRule(sCheckY, yName, sCheckY, yName, Direction::Right);
-  tm.AddRule(sCheckY, ':', sCheckY, ':', Direction::Right);
-  tm.AddRule(sCheckY, '*', sCheckY, '*', Direction::Right);
+    std::string currGo = goEnd;
+    for (int i = 0; i < 32; ++i) {
+        std::string nxt = goEnd + "_" + std::to_string(i);
+        MoveHead(tm, currGo, nxt, Direction::Stay, d1, d2);
+        currGo = nxt;
+    }
+    
+    Direction dl1 = (tapeIndex == 1) ? Direction::Left : Direction::Stay;
+    Direction dl2 = (tapeIndex == 2) ? Direction::Left : Direction::Stay;
+    MoveHead(tm, currGo, invertAdd1, Direction::Stay, dl1, dl2);
 
-  tm.AddRule(sCheckY, '1', sGoStartX, '*', Direction::Stay);
-  tm.AddRule(sCheckY, '#', sRestore, '#', Direction::Stay);
-
-  // Дописывание единицы в X.
-  GenerateReturnToStart(tm, sGoStartX, sFindX);
-  GenerateMoveRightUntil(tm, sFindX, xName, sWriteX);
-
-  tm.AddRule(sWriteX, xName, sWriteX, xName, Direction::Right);
-  tm.AddRule(sWriteX, ':', sWriteX, ':', Direction::Right);
-  tm.AddRule(sWriteX, '1', sWriteX, '1', Direction::Right);
-
-  tm.AddRule(sWriteX, '#', sGoNext, '1', Direction::Right);
-
-  tm.AddRule(sGoNext, '_', prefix + "loop_back", '#', Direction::Stay);
-  tm.AddRule(sGoNext, '#', prefix + "loop_back", '#', Direction::Stay);
-
-  GenerateReturnToStart(tm, prefix + "loop_back", sStartLoop);
-
-  // Восстановление '*' → '1' в Y.
-  GenerateReturnToStart(tm, sRestore, prefix + "clean_y");
-  GenerateMoveRightUntil(tm, prefix + "clean_y", yName, prefix + "cleaning");
-
-  tm.AddRule(prefix + "cleaning", yName, prefix + "cleaning", yName,
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", ':', prefix + "cleaning", ':',
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", '1', prefix + "cleaning", '1',
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", '*', prefix + "cleaning", '1',
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", '#', prefix + "finish", '#', Direction::Stay);
-
-  GenerateReturnToStart(tm, prefix + "finish", nextState);
+    std::string c1 = invertAdd1;
+    std::string c0 = startState + "_invAdd1_1";
+    
+    for (int i = 0; i < 32; ++i) {
+        std::string nxt1 = (i == 31) ? nextState : c1 + "_" + std::to_string(i);
+        std::string nxt0 = (i == 31) ? nextState : c0 + "_" + std::to_string(i);
+        
+        if (tapeIndex == 1) {
+            tm.AddRule(c1, '?', '0', '?', nxt1, '?', '0', '?', Direction::Stay, Direction::Left, Direction::Stay);
+            tm.AddRule(c1, '?', '1', '?', nxt0, '?', '1', '?', Direction::Stay, Direction::Left, Direction::Stay);
+            tm.AddRule(c0, '?', '0', '?', nxt0, '?', '1', '?', Direction::Stay, Direction::Left, Direction::Stay);
+            tm.AddRule(c0, '?', '1', '?', nxt0, '?', '0', '?', Direction::Stay, Direction::Left, Direction::Stay);
+        } else {
+            tm.AddRule(c1, '?', '?', '0', nxt1, '?', '?', '0', Direction::Stay, Direction::Stay, Direction::Left);
+            tm.AddRule(c1, '?', '?', '1', nxt0, '?', '?', '1', Direction::Stay, Direction::Stay, Direction::Left);
+            tm.AddRule(c0, '?', '?', '0', nxt0, '?', '?', '1', Direction::Stay, Direction::Stay, Direction::Left);
+            tm.AddRule(c0, '?', '?', '1', nxt0, '?', '?', '0', Direction::Stay, Direction::Stay, Direction::Left);
+        }
+        c1 = nxt1;
+        c0 = nxt0;
+    }
+    
+    std::string resetEnd = startState + "_resetEnd";
+    MoveHead(tm, c1, resetEnd, Direction::Stay, Direction::Stay, Direction::Stay);
+    MoveHead(tm, c0, resetEnd, Direction::Stay, Direction::Stay, Direction::Stay);
+    
+    std::string currR = resetEnd;
+    for (int i = 0; i < 33; ++i) {
+        std::string nxt = (i == 32) ? nextState : resetEnd + "_" + std::to_string(i);
+        MoveHead(tm, currR, nxt, Direction::Stay, d1, d2);
+        currR = nxt;
+    }
 }
 
-// Декремент: X--.
-void GenerateDecrement(TuringMachine &tm, const std::string &startState,
-                       char xName, const std::string &nextState) {
-  std::string prefix = startState + "_dec_";
-  std::string sFind = prefix + "find";
-  std::string sScan = prefix + "scan";
-  std::string sCheck = prefix + "check";
-  std::string sErase = prefix + "erase";
-
-  GenerateMoveRightUntil(tm, startState, xName, sFind);
-
-  tm.AddRule(sFind, xName, sFind, xName, Direction::Right);
-  tm.AddRule(sFind, ':', sScan, ':', Direction::Right);
-
-  tm.AddRule(sScan, '1', sScan, '1', Direction::Right);
-  tm.AddRule(sScan, '#', sCheck, '#', Direction::Left);
-
-  tm.AddRule(sCheck, '1', sErase, '#', Direction::Right);
-  tm.AddRule(sErase, '#', prefix + "return", '_', Direction::Stay);
-
-  tm.AddRule(sCheck, ':', prefix + "return", ':', Direction::Stay);
-
-  GenerateReturnToStart(tm, prefix + "return", nextState);
+// Бинарное сложение Tape 2 = Tape 1 + Tape 2
+inline void GenerateBinaryAdd(TuringMachine& tm, const std::string& startState, const std::string& nextState) {
+    std::string c0 = startState + "_c0";
+    std::string c1 = startState + "_c1";
+    
+    MoveHead(tm, startState, c0, Direction::Stay, Direction::Left, Direction::Left);
+    
+    for (int i = 0; i < 33; ++i) {
+        std::string nxt0 = (i == 32) ? nextState : c0 + "_" + std::to_string(i);
+        std::string nxt1 = (i == 32) ? nextState : c1 + "_" + std::to_string(i);
+        
+        tm.AddRule(c0, '?', '0', '0', nxt0, '?', '0', '0', Direction::Stay, Direction::Left, Direction::Left);
+        tm.AddRule(c0, '?', '0', '1', nxt0, '?', '0', '1', Direction::Stay, Direction::Left, Direction::Left);
+        tm.AddRule(c0, '?', '1', '0', nxt0, '?', '1', '1', Direction::Stay, Direction::Left, Direction::Left);
+        tm.AddRule(c0, '?', '1', '1', nxt1, '?', '1', '0', Direction::Stay, Direction::Left, Direction::Left);
+        
+        tm.AddRule(c1, '?', '0', '0', nxt0, '?', '0', '1', Direction::Stay, Direction::Left, Direction::Left);
+        tm.AddRule(c1, '?', '0', '1', nxt1, '?', '0', '0', Direction::Stay, Direction::Left, Direction::Left);
+        tm.AddRule(c1, '?', '1', '0', nxt1, '?', '1', '0', Direction::Stay, Direction::Left, Direction::Left);
+        tm.AddRule(c1, '?', '1', '1', nxt1, '?', '1', '1', Direction::Stay, Direction::Left, Direction::Left);
+        
+        c0 = nxt0;
+        c1 = nxt1;
+    }
+    
+    MoveHead(tm, c0, nextState, Direction::Stay, Direction::Right, Direction::Right);
+    MoveHead(tm, c1, nextState, Direction::Stay, Direction::Right, Direction::Right);
 }
 
-// Усечённое вычитание: X = max(0, X - Y).
-void GenerateSubtract(TuringMachine &tm, const std::string &startState,
-                      char xName, char yName, const std::string &nextState) {
-  std::string prefix = startState + "_sub_";
-  std::string sCheckY = prefix + "check_y";
-  std::string sGoStart = prefix + "go_start_x";
-  std::string sRestore = prefix + "restore";
-
-  GenerateMoveRightUntil(tm, startState, yName, sCheckY);
-
-  tm.AddRule(sCheckY, yName, sCheckY, yName, Direction::Right);
-  tm.AddRule(sCheckY, ':', sCheckY, ':', Direction::Right);
-  tm.AddRule(sCheckY, '@', sCheckY, '@', Direction::Right);
-
-  tm.AddRule(sCheckY, '1', sGoStart, '@', Direction::Stay);
-  tm.AddRule(sCheckY, '#', sRestore, '#', Direction::Stay);
-
-  std::string sDecX = prefix + "do_dec_x";
-  std::string sLoopBack = prefix + "loop_back";
-
-  GenerateReturnToStart(tm, sGoStart, sDecX);
-  GenerateDecrement(tm, sDecX, xName, sLoopBack);
-  GenerateReturnToStart(tm, sLoopBack, startState);
-
-  // Восстановление '@' → '1' в Y.
-  GenerateReturnToStart(tm, sRestore, prefix + "clean_y");
-  GenerateMoveRightUntil(tm, prefix + "clean_y", yName, prefix + "cleaning");
-
-  tm.AddRule(prefix + "cleaning", yName, prefix + "cleaning", yName,
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", ':', prefix + "cleaning", ':',
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", '1', prefix + "cleaning", '1',
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", '@', prefix + "cleaning", '1',
-             Direction::Right);
-
-  tm.AddRule(prefix + "cleaning", '#', prefix + "finish", '#', Direction::Stay);
-
-  GenerateReturnToStart(tm, prefix + "finish", nextState);
+// Изменение знака Tape 2 (инверсия 0 <-> 1)
+inline void GenerateInvertSignTape2(TuringMachine& tm, const std::string& startState, const std::string& nextState) {
+    std::string rewind = startState + "_rw";
+    GenerateRewindTape(tm, startState, 2, rewind);
+    
+    std::string doInv = startState + "_do";
+    MoveHead(tm, rewind, doInv, Direction::Stay, Direction::Stay, Direction::Right);
+    
+    std::string goEnd = startState + "_goEnd";
+    tm.AddRule(doInv, '?', '?', '0', goEnd, '?', '?', '1', Direction::Stay, Direction::Stay, Direction::Right);
+    tm.AddRule(doInv, '?', '?', '1', goEnd, '?', '?', '0', Direction::Stay, Direction::Stay, Direction::Right);
+    
+    std::string curr = goEnd;
+    for(int i = 0; i < 32; ++i) {
+        std::string nxt = (i == 31) ? nextState : goEnd + "_" + std::to_string(i);
+        MoveHead(tm, curr, nxt, Direction::Stay, Direction::Stay, Direction::Right);
+        curr = nxt;
+    }
 }
 
-// Умножение с накоплением: X = X + Y * Z.
-void GenerateMultiply(TuringMachine &tm, const std::string &startState,
-                      char xName, char yName, char zName,
-                      const std::string &nextState) {
-  std::string prefix = startState + "_mul_";
-  std::string sLoopZ = prefix + "loop_z";
-  std::string sCheckZ = prefix + "check_z";
-  std::string sDoAdd = prefix + "do_add";
-  std::string sRestoreZ = prefix + "restore_z";
-
-  GenerateReturnToStart(tm, startState, sLoopZ);
-  GenerateMoveRightUntil(tm, sLoopZ, zName, sCheckZ);
-
-  tm.AddRule(sCheckZ, zName, sCheckZ, zName, Direction::Right);
-  tm.AddRule(sCheckZ, ':', sCheckZ, ':', Direction::Right);
-  tm.AddRule(sCheckZ, '@', sCheckZ, '@', Direction::Right);
-
-  tm.AddRule(sCheckZ, '1', sDoAdd, '@', Direction::Stay);
-  tm.AddRule(sCheckZ, '#', sRestoreZ, '#', Direction::Stay);
-
-  GenerateAdd(tm, sDoAdd, xName, yName, sLoopZ);
-
-  // Восстановление '@' → '1' в Z.
-  GenerateReturnToStart(tm, sRestoreZ, prefix + "clean_z");
-  GenerateMoveRightUntil(tm, prefix + "clean_z", zName, prefix + "cleaning");
-
-  tm.AddRule(prefix + "cleaning", zName, prefix + "cleaning", zName,
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", ':', prefix + "cleaning", ':',
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", '1', prefix + "cleaning", '1',
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", '@', prefix + "cleaning", '1',
-             Direction::Right);
-  tm.AddRule(prefix + "cleaning", '#', prefix + "finish", '#', Direction::Stay);
-
-  GenerateReturnToStart(tm, prefix + "finish", nextState);
+// Высокоуровневое сложение
+inline void GenerateFullAdd(TuringMachine& tm, const std::string& start, const std::string& next) {
+    std::string s1 = start + "_1";
+    std::string s2 = start + "_2";
+    std::string s3 = start + "_3";
+    std::string s4 = start + "_4";
+    std::string s5 = start + "_5";
+    
+    GenerateToTwosComplement(tm, start, 1, s1);
+    GenerateToTwosComplement(tm, s1, 2, s2);
+    GenerateBinaryAdd(tm, s2, s3);
+    
+    // Результат в Tape 2, Tape 1 возвращаем к значению
+    GenerateRewindTape(tm, s3, 2, s4);
+    
+    // Теперь конвертируем результат из доп. кода в прямой (алгоритм тот же)
+    GenerateToTwosComplement(tm, s4, 2, next);
 }
 
-// Присваивание: Dest = Src (очистка + копирование).
-void GenerateAssign(TuringMachine &tm, const std::string &startState,
-                    char destName, char srcName, const std::string &nextState) {
-  std::string sClear = startState + "_assign_clear";
-
-  GenerateClear(tm, startState, destName, sClear);
-  GenerateAdd(tm, sClear, destName, srcName, nextState);
-}
-
-// Деление с остатком: Q = X / Y, R = X % Y.
-void GenerateDivMod(TuringMachine &tm, const std::string &startState,
-                    char xName, char yName, char qName, char rName,
-                    char zeroName, const std::string &nextState) {
-  std::string prefix = startState + "_divmod_";
-  std::string sClearQ = prefix + "clear_q";
-  std::string sAssignR = prefix + "assign_r";
-  std::string sLoop = prefix + "loop";
-  std::string sDoSub = prefix + "do_sub";
-  std::string sDoInc = prefix + "do_inc";
-
-  // Защита от деления на ноль.
-  GenerateCompare(tm, startState, yName, zeroName, sClearQ, nextState,
-                  nextState);
-
-  // Q = 0.
-  GenerateClear(tm, sClearQ, qName, sAssignR);
-
-  // R = X.
-  GenerateAssign(tm, sAssignR, rName, xName, sLoop);
-
-  // Цикл: пока R >= Y.
-  GenerateCompare(tm, sLoop, rName, yName, sDoSub, nextState, sDoSub);
-
-  // R = R - Y.
-  GenerateSubtract(tm, sDoSub, rName, yName, sDoInc);
-
-  // Q++.
-  GenerateIncrement(tm, sDoInc, qName, sLoop);
+// Высокоуровневое вычитание (Tape 1 - Tape 2 -> Tape 2)
+inline void GenerateFullSub(TuringMachine& tm, const std::string& start, const std::string& next) {
+    std::string s1 = start + "_1";
+    GenerateInvertSignTape2(tm, start, s1);
+    GenerateFullAdd(tm, s1, next);
 }
 
 #endif // MACROS_FOR_TURING_H

@@ -9,38 +9,28 @@
 #include <vector>
 
 // Описание блока памяти на ленте.
+// Переменная занимает 33 ячейки: 1 знак, 32 бита данных.
+// Между переменными ставится разделитель '#'.
 struct Variable {
-    std::string  name;            // Имя переменной (например, "counter").
-    char         address;         // Однобуквенный адрес на ленте ('a'..'z').
-    int          initialValue;    // Начальное значение (количество единиц).
-    size_t       padding = 10000; // Зарезервированное пространство для роста.
+  std::string name;       // Имя переменной
+  int startIndex;         // Начальный индекс на 1-й ленте (там, где '#')
+  int initialValue;       // Начальное десятичное значение
 };
 
-// Менеджер памяти: маппинг имён переменных на физические адреса ленты.
+// Менеджер памяти: маппинг имён переменных на физические адреса ленты
 class MemoryManager {
 public:
-    // Регистрация переменной в памяти.
-    void Allocate(
-        const std::string & name,
-        int                 initialValue = 0,
-        size_t              padding      = kDefaultPadding
-    );
-
-    // Получение физического адреса по имени.
-    char GetAddress(const std::string & name) const;
-
-    // Запись переменных на ленту.
-    void Deploy(TuringMachine & tm) const;
-
-    // Декодирование унарного значения с ленты в int.
-    int GetDecimalValue(const TuringMachine & tm, const std::string & name) const;
+  void Allocate(const std::string &name, int initialValue = 0);
+  void Deploy(TuringMachine &tm) const;
+  int GetDecimalValue(const TuringMachine &tm, const std::string &name) const;
+  int GetIndex(const std::string &name) const;
+  static std::string IntToBinary33(int value);
+  std::vector<std::string> GetVariableNames() const;
 
 private:
-    static constexpr size_t kDefaultPadding = 15;
-
-    std::vector<Variable>                    variables_;
-    std::unordered_map<std::string, char>    symbolTable_;
-    char                                     nextAddress_ = 'a';
+  std::vector<Variable> variables_;
+  std::unordered_map<std::string, int> symbolTable_;
+  int nextHead_ = 1; // Индекс на ленте 0 (0 ячейка - маркер начала ленты '^')
 };
 
-#endif  // MEMORY_MANAGER_H
+#endif // MEMORY_MANAGER_H
